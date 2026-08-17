@@ -31,7 +31,8 @@ tdpa-smoke-robosuite = "tdpa.tools.smoke_robosuite:main"
 tdpa-collect-nominal = "tdpa.data.collect_nominal_demos:main"
 tdpa-train-nominal = "tdpa.training.train_nominal_policy:main"
 tdpa-evaluate-nominal = "tdpa.evaluation.evaluate_nominal_policy:main"
-tdpa-evaluate-oracle = "tdpa.evaluation.robosuite_oracle_gate:main"
+tdpa-evaluate-oracle = "tdpa.evaluation.robosuite_oracle_v2:main"
+tdpa-evaluate-oracle-v1 = "tdpa.evaluation.robosuite_oracle_gate:main"
 tdpa-smoke-nominal = "tdpa.tools.smoke_nominal_policy:main"
 
 [tool.setuptools.packages.find]

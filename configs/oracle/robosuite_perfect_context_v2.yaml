@@ -1,0 +1,50 @@
+version: tdpa-robosuite-perfect-context-v2
+revision: 1
+derived_from: >-
+  V1 held-out audit: Push recovered with excessive action projection; Lift timing was degraded by
+  uniform velocity scaling. V1 rows are not reused by this development/final protocol.
+
+nominal_physics:
+  mass: 1.0
+  friction: 0.55
+
+protocol:
+  episodes_per_seed_cell: 20
+  development:
+    seeds: [4101, 4102, 4103]
+    reset_index_start: 40000
+  final:
+    seeds: [5101, 5102, 5103]
+    reset_index_start: 50000
+
+# Preserve most nominal action timing. High-friction Push receives at most a 10%
+# motion increase; stiffness supplies the rest of the physical compensation.
+push:
+  velocity_friction_exponent: 0.5
+  velocity_correction_gain: 0.35
+  velocity_scale_minimum: 1.0
+  velocity_scale_maximum: 1.1
+  stiffness_mass_exponent: 1.0
+  stiffness_friction_exponent: 1.0
+
+# Lift keeps velocity_scale exactly one so approach and close phases remain aligned.
+# A vertical residual is permitted only after a causal close/upward command and is
+# proportional only to positive excess mass. No object/contact state is consumed.
+lift:
+  velocity_scale: 1.0
+  stiffness_mass_exponent: 1.0
+  damping_mass_exponent: 0.5
+  grip_mass_exponent: 1.0
+  grip_friction_exponent: -0.5
+  close_command_threshold: 0.0
+  gripper_width_threshold: 0.075
+  upward_action_threshold: 0.05
+  vertical_residual_gain: 0.10
+  vertical_residual_maximum: 0.10
+
+gate:
+  minimum_absolute_success_recovery: 0.20
+  minimum_success_recovery_ci_lower: 0.05
+  minimum_gap_closed: 0.50
+  maximum_saturation_rate: 0.10
+  maximum_force_violation_increase: 0.10

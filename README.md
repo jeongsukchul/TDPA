@@ -130,38 +130,44 @@ diagnostic.
 
 ## Perfect-context controller upper bound (no training)
 
-After both competence gates pass and directional OOD degradation is established, run the
-privileged oracle gate before implementing a learned adapter. It replays the exact hard-cell
-seed/reset/physics rows from the OOD artifact twice: frozen B0 and B0 plus a fixed analytical
-controller schedule. The schedule receives only the true object mass and friction, never the cell
-name, and is clipped through the same action, velocity, stiffness, damping, and gripper-force
-bounds intended for a learned adapter.
+Oracle v1 established strong Push recovery but projected too many actions, while uniform Lift
+velocity scaling disrupted the nominal policy's timing and produced no recovery. Those artifacts
+remain an audit record and are not reused to evaluate v2.
 
-The default hard cells are Push high friction and Lift high mass, low friction, and composition.
-The locked full gate requires the original passing competence artifact and 3-seed x 20-episode OOD
-artifact. Run both tasks with:
+Oracle v2 receives only true mass/friction as privileged inputs. It otherwise consumes the same
+causal nominal action and deployment proprioception available to a learned adapter. Push velocity
+is capped at 1.1x while retaining stiffness compensation. Lift preserves velocity at 1.0x, adapts
+gains and gripper force, and permits a bounded vertical residual only after a causal close/upward
+phase. Split or OOD-cell labels are never passed to the controller.
+
+V2 has separate locked 3-seed x 20-episode namespaces. Development uses seeds 4101--4103 and reset
+indexes 40000--40019. Final uses seeds 5101--5103 and reset indexes 50000--50019. Final execution is
+rejected unless both the development result and current schedule/config hashes match exactly.
+
+Run development first:
 
 ```bash
 conda activate TDPA
 export MUJOCO_GL=egl
-./scripts/evaluate_robosuite_oracle.sh
+./scripts/evaluate_robosuite_oracle.sh development
 ```
 
-The Lift defaults use `lift_bc_spatial.pt`, `lift_competence_spatial.json`, and
-`lift_ood_spatial.json`. Override any local name without editing the script, for example:
+Inspect `push_oracle_v2_development.json` and `lift_oracle_v2_development.json`. If either fails,
+revise only from development evidence, increment the oracle revision, and repeat development. Do
+not run final. Once both development gates pass, freeze the configuration and run exactly once:
 
 ```bash
-TDPA_LIFT_CHECKPOINT=artifacts/nominal/lift_bc.pt \
-TDPA_LIFT_COMPETENCE=artifacts/nominal/lift_competence.json \
-TDPA_LIFT_OOD=artifacts/nominal/lift_ood_gate.json \
-./scripts/evaluate_robosuite_oracle.sh
+./scripts/evaluate_robosuite_oracle.sh final
 ```
 
-A PASS means only that bounded perfect physics context can materially recover each selected
-failure cell without excessive saturation or increased simulator force violations. It supports
-moving next to learned SysID / RMA baselines. It does not validate deployable adaptation,
-task-free representations, data efficiency, or physical safety. If the oracle fails a cell, fix
-the control interface or nominal policy before representation training.
+The defaults use `push_bc.pt` / `push_competence.json` and `lift_bc_spatial.pt` /
+`lift_competence_spatial.json`. Override local names with `TDPA_PUSH_CHECKPOINT`,
+`TDPA_PUSH_COMPETENCE`, `TDPA_LIFT_CHECKPOINT`, and `TDPA_LIFT_COMPETENCE`.
+
+A final PASS means only that bounded perfect physics context materially recovers every selected
+failure cell without excessive action projection, backend saturation, or increased simulator force
+violations. It supports moving next to learned SysID / RMA baselines. It does not validate
+deployable adaptation, task-free representations, data efficiency, or physical safety.
 
 ## Scientific boundaries
 
