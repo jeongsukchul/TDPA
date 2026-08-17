@@ -152,8 +152,8 @@ export MUJOCO_GL=egl
 ./scripts/evaluate_robosuite_oracle.sh development
 ```
 
-Artifacts include the schedule revision, for example `push_oracle_v2_r2_development.json` and
-`lift_oracle_v2_r2_development.json`; previous revisions are not overwritten. If either fails,
+Artifacts include the schedule revision, for example `push_oracle_v2_r3_development.json` and
+`lift_oracle_v2_r3_development.json`; previous revisions are not overwritten. If either fails,
 revise only from development evidence, increment the oracle revision, and repeat development. Do
 not run final. Once both development gates pass, freeze the configuration and run exactly once:
 

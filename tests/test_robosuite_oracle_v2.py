@@ -94,7 +94,7 @@ def test_lift_v2_preserves_timing_with_causal_settle_then_mass_residual() -> Non
             _observation(gripper_width=0.04),
         )
     assert lift.phase == "lift"
-    assert 0.0 < lift.correction["cartesian_residual"][2] <= 0.04
+    assert 0.0 < lift.correction["cartesian_residual"][2] <= 0.08
 
     oracle.reset()
     light = oracle.decide(

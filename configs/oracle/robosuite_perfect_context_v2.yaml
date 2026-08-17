@@ -1,10 +1,10 @@
 version: tdpa-robosuite-perfect-context-v2
-revision: 2
+revision: 3
 derived_from: >-
-  V2 revision-1 development: Push recovered 50 percentage points but projected 20.3% of actions;
-  Lift's immediate upward residual modestly helped composition but hurt high mass. Revision 2 uses
-  nominal-action headroom and a grasp-settle state before lifting. V1 and revision-1 rows are never
-  final-evaluation rows.
+  V2 revision-2 development: Push passed with 51.7-point bounded recovery; Lift composition
+  recovered 60 points, while low-friction and high-mass recovery remained 11.7 and 10 points with
+  no saturation, drops, or slips. Revision 3 strengthens only extreme-load grip, settling, and
+  post-settle lift compensation. Earlier rows are never final-evaluation rows.
 
 nominal_physics:
   mass: 1.0
@@ -37,18 +37,18 @@ lift:
   velocity_scale: 1.0
   stiffness_mass_exponent: 1.0
   damping_mass_exponent: 0.5
-  grip_mass_exponent: 1.0
-  grip_friction_exponent: -0.5
+  grip_mass_exponent: 1.5
+  grip_friction_exponent: -1.0
   close_command_threshold: 0.0
   gripper_width_threshold: 0.075
   upward_action_threshold: 0.05
   settle_steps_base: 4
-  settle_steps_mass_gain: 2.0
-  settle_steps_friction_gain: 2.0
+  settle_steps_mass_gain: 3.0
+  settle_steps_friction_gain: 3.0
   settle_wide_gripper_extra_steps: 2
   settle_vertical_cancel_maximum: 0.10
-  vertical_residual_gain: 0.02
-  vertical_residual_maximum: 0.04
+  vertical_residual_gain: 0.08
+  vertical_residual_maximum: 0.08
   action_headroom_margin: 0.999
 
 gate:
