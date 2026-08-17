@@ -128,6 +128,41 @@ recover. The gripper limit is a per-actuator simulator force cap, not a calibrat
 grasp/contact-force claim; the Push object-table force is likewise only a friction-interface
 diagnostic.
 
+## Perfect-context controller upper bound (no training)
+
+After both competence gates pass and directional OOD degradation is established, run the
+privileged oracle gate before implementing a learned adapter. It replays the exact hard-cell
+seed/reset/physics rows from the OOD artifact twice: frozen B0 and B0 plus a fixed analytical
+controller schedule. The schedule receives only the true object mass and friction, never the cell
+name, and is clipped through the same action, velocity, stiffness, damping, and gripper-force
+bounds intended for a learned adapter.
+
+The default hard cells are Push high friction and Lift high mass, low friction, and composition.
+The locked full gate requires the original passing competence artifact and 3-seed x 20-episode OOD
+artifact. Run both tasks with:
+
+```bash
+conda activate TDPA
+export MUJOCO_GL=egl
+./scripts/evaluate_robosuite_oracle.sh
+```
+
+The Lift defaults use `lift_bc_spatial.pt`, `lift_competence_spatial.json`, and
+`lift_ood_spatial.json`. Override any local name without editing the script, for example:
+
+```bash
+TDPA_LIFT_CHECKPOINT=artifacts/nominal/lift_bc.pt \
+TDPA_LIFT_COMPETENCE=artifacts/nominal/lift_competence.json \
+TDPA_LIFT_OOD=artifacts/nominal/lift_ood_gate.json \
+./scripts/evaluate_robosuite_oracle.sh
+```
+
+A PASS means only that bounded perfect physics context can materially recover each selected
+failure cell without excessive saturation or increased simulator force violations. It supports
+moving next to learned SysID / RMA baselines. It does not validate deployable adaptation,
+task-free representations, data efficiency, or physical safety. If the oracle fails a cell, fix
+the control interface or nominal policy before representation training.
+
 ## Scientific boundaries
 
 - Deployment models receive only RGB-D, proprioception, and action history.

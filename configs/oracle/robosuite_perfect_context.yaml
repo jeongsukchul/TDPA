@@ -1,0 +1,25 @@
+version: tdpa-robosuite-perfect-context-v1
+nominal_physics:
+  mass: 1.0
+  friction: 0.55
+
+# These are fixed analytical schedules, not values fitted to rollout outcomes.
+push:
+  velocity_friction_exponent: 0.5
+  stiffness_mass_exponent: 1.0
+  stiffness_friction_exponent: 1.0
+
+lift:
+  velocity_mass_exponent: -0.5
+  velocity_friction_exponent: 0.5
+  stiffness_mass_exponent: 1.0
+  damping_mass_exponent: 0.5
+  grip_mass_exponent: 1.0
+  grip_friction_exponent: -1.0
+
+gate:
+  minimum_absolute_success_recovery: 0.20
+  minimum_success_recovery_ci_lower: 0.05
+  minimum_gap_closed: 0.50
+  maximum_saturation_rate: 0.10
+  maximum_force_violation_increase: 0.10
