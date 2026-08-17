@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tdpa.envs.physics_config import load_physics_config
+from tdpa.envs.physics_config import load_physics_config, validate_lift_physics_activation
 from tdpa.evaluation.evaluate_nominal_policy import _json_hash
 from tdpa.evaluation.lift_friction_calibration import REFINEMENT_VERSION
 from tdpa.evaluation.lift_friction_validation import (
@@ -123,3 +123,45 @@ def test_validation_gate_requires_uniform_and_boundary_support() -> None:
     assert _gate_decision(summaries, _config()["gate"])["passed"]
     summaries["boundary_stress"] = _summary(0.8, 0.6, force=0.2)
     assert not _gate_decision(summaries, _config()["gate"])["passed"]
+
+
+def test_activation_requires_complete_held_out_validation_artifact(tmp_path) -> None:
+    environment_hash = "environment"
+    manifest = [{"cell": "calibrated_uniform", "seed": 7301}]
+    artifact = {
+        "validation_version": "tdpa-lift-friction-validation-v1",
+        "mode": "validation",
+        "status": "PASS",
+        "task": "lift",
+        "environment_hash": environment_hash,
+        "config_sha256": _json_hash(_config()),
+        "candidate_ood_config_sha256": _json_hash(
+            load_yaml("configs/physics/ood_lift_calibrated_v1.yaml")
+        ),
+        "seeds": [7301, 7302, 7303],
+        "uniform_episodes_per_seed": 20,
+        "boundary_episodes_per_seed": 5,
+        "source_refinement_sha256": "a" * 64,
+        "failures": [],
+        "summaries": {
+            "calibrated_uniform": {"episodes": 60},
+            "boundary_stress": {"episodes": 15},
+        },
+        "gate": {
+            "passed": True,
+            "cells": {
+                "calibrated_uniform": {"passed": True},
+                "boundary_stress": {"passed": True},
+            },
+        },
+        "manifest": manifest,
+        "manifest_sha256": _json_hash(manifest),
+    }
+    path = tmp_path / "validation.json"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    assert len(validate_lift_physics_activation(path, environment_hash=environment_hash)) == 64
+
+    artifact["summaries"]["boundary_stress"]["episodes"] = 14
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(ValueError, match="incomplete boundary"):
+        validate_lift_physics_activation(path, environment_hash=environment_hash)

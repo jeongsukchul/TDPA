@@ -16,29 +16,41 @@ push_checkpoint="${TDPA_PUSH_CHECKPOINT:-artifacts/nominal/push_bc.pt}"
 push_competence="${TDPA_PUSH_COMPETENCE:-artifacts/nominal/push_competence.json}"
 lift_checkpoint="${TDPA_LIFT_CHECKPOINT:-artifacts/nominal/lift_bc_spatial.pt}"
 lift_competence="${TDPA_LIFT_COMPETENCE:-artifacts/nominal/lift_competence_spatial.json}"
+lift_friction_validation="${TDPA_LIFT_FRICTION_VALIDATION:-artifacts/calibration/lift_friction_validation.json}"
 
 if [[ "$stage" == "final" ]]; then
   python - \
     "$push_checkpoint" "$push_competence" \
     "artifacts/nominal/push_oracle_v2_${revision_tag}_development.json" \
     "$lift_checkpoint" "$lift_competence" \
-    "artifacts/nominal/lift_oracle_v2_${revision_tag}_development.json" <<'PY'
+    "artifacts/nominal/lift_oracle_v2_${revision_tag}_liftcalv1_development.json" \
+    "$lift_friction_validation" <<'PY'
 import sys
 from pathlib import Path
 
 from tdpa.evaluation.evaluate_nominal_policy import _json_hash, _validate_competence_artifact
 from tdpa.evaluation.robosuite_oracle_v2 import _validate_development_artifact
+from tdpa.envs.physics_config import physics_ood_path, validate_lift_physics_activation
 from tdpa.policies.learned_nominal import checkpoint_sha256, current_environment_hash
 from tdpa.utils.config import load_yaml
 
 oracle_hash = _json_hash(load_yaml("configs/oracle/robosuite_perfect_context_v2.yaml"))
 arguments = sys.argv[1:]
+lift_validation = Path(arguments[6])
 for task, offset in (("push", 0), ("lift", 3)):
     checkpoint = Path(arguments[offset])
     competence = Path(arguments[offset + 1])
     development = Path(arguments[offset + 2])
     checkpoint_hash = checkpoint_sha256(checkpoint)
     _validate_competence_artifact(competence, task=task, checkpoint_hash=checkpoint_hash)
+    validation_hash = (
+        validate_lift_physics_activation(
+            lift_validation,
+            environment_hash=current_environment_hash(task),
+        )
+        if task == "lift"
+        else None
+    )
     _validate_development_artifact(
         development,
         task=task,
@@ -46,6 +58,8 @@ for task, offset in (("push", 0), ("lift", 3)):
         environment_hash=current_environment_hash(task),
         oracle_config_hash=oracle_hash,
         adapter_config_hash=_json_hash(load_yaml(f"configs/adapter/{task}.yaml")),
+        physics_ood_config_hash=_json_hash(load_yaml(physics_ood_path(task))),
+        lift_friction_validation_hash=validation_hash,
     )
 print("Both development artifacts match the frozen oracle-v2 configuration.")
 PY
@@ -60,7 +74,11 @@ for task in push lift; do
     checkpoint="$lift_checkpoint"
     competence="$lift_competence"
   fi
-  output="artifacts/nominal/${task}_oracle_v2_${revision_tag}_${stage}.json"
+  physics_tag=""
+  if [[ "$task" == "lift" ]]; then
+    physics_tag="_liftcalv1"
+  fi
+  output="artifacts/nominal/${task}_oracle_v2_${revision_tag}${physics_tag}_${stage}.json"
   command=(
     python -m tdpa.evaluation.robosuite_oracle_v2
     --mode "$stage"
@@ -70,9 +88,12 @@ for task in push lift; do
     --device "$device"
     --output "$output"
   )
+  if [[ "$task" == "lift" ]]; then
+    command+=(--lift-friction-validation "$lift_friction_validation")
+  fi
   if [[ "$stage" == "final" ]]; then
     command+=(
-      --development-artifact "artifacts/nominal/${task}_oracle_v2_${revision_tag}_development.json"
+      --development-artifact "artifacts/nominal/${task}_oracle_v2_${revision_tag}${physics_tag}_development.json"
     )
   fi
   "${command[@]}"

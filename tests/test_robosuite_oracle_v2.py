@@ -129,6 +129,9 @@ def test_development_and_final_manifests_are_disjoint_and_locked() -> None:
         episodes=final_episodes,
     )
     assert len(dev) == len(final) == 180
+    lift_low_friction = [row for row in dev if row["cell"] == "ood_friction_low"]
+    assert lift_low_friction
+    assert all(0.29 <= row["friction"] < 0.34 for row in lift_low_friction)
     assert {
         (row["seed"], row["reset_index"]) for row in dev
     }.isdisjoint({(row["seed"], row["reset_index"]) for row in final})

@@ -40,6 +40,14 @@ def test_low_and_high_ood_cells_are_directionally_disjoint() -> None:
     assert 0.9 <= high_friction.friction < 1.2
 
 
+def test_lift_uses_calibrated_low_friction_without_changing_push() -> None:
+    push = _physics_for_cell("ood_friction_low", seed=3, episode=4, task="push")
+    lift = _physics_for_cell("ood_friction_low", seed=3, episode=4, task="lift")
+    assert 0.08 <= push.friction < 0.22
+    assert 0.29 <= lift.friction < 0.34
+    assert push.mass == lift.mass
+
+
 def test_ood_requires_matching_locked_competence_artifact(tmp_path) -> None:
     path = tmp_path / "competence.json"
     artifact = {

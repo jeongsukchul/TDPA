@@ -118,7 +118,9 @@ python -m tdpa.evaluation.evaluate_nominal_policy \
 python -m tdpa.evaluation.evaluate_nominal_policy \
   --mode ood --task lift --checkpoint artifacts/nominal/lift_bc.pt \
   --competence-artifact artifacts/nominal/lift_competence.json \
-  --seeds 11 22 33 --episodes 20 --output artifacts/nominal/lift_ood_gate.json
+  --lift-friction-validation artifacts/calibration/lift_friction_validation.json \
+  --seeds 11 22 33 --episodes 20 \
+  --output artifacts/nominal/lift_ood_calibrated_v1.json
 ```
 
 A low cloning loss is not policy competence. Do not begin adaptation or representation training
@@ -153,7 +155,8 @@ export MUJOCO_GL=egl
 ```
 
 Artifacts include the schedule revision, for example `push_oracle_v2_r3_development.json` and
-`lift_oracle_v2_r3_development.json`; previous revisions are not overwritten. If either fails,
+`lift_oracle_v2_r3_liftcalv1_development.json`; previous Lift physics revisions are not
+overwritten. If either fails,
 revise only from development evidence, increment the oracle revision, and repeat development. Do
 not run final. Once both development gates pass, freeze the configuration and run exactly once:
 
@@ -163,7 +166,8 @@ not run final. Once both development gates pass, freeze the configuration and ru
 
 The defaults use `push_bc.pt` / `push_competence.json` and `lift_bc_spatial.pt` /
 `lift_competence_spatial.json`. Override local names with `TDPA_PUSH_CHECKPOINT`,
-`TDPA_PUSH_COMPETENCE`, `TDPA_LIFT_CHECKPOINT`, and `TDPA_LIFT_COMPETENCE`.
+`TDPA_PUSH_COMPETENCE`, `TDPA_LIFT_CHECKPOINT`, `TDPA_LIFT_COMPETENCE`, and
+`TDPA_LIFT_FRICTION_VALIDATION`.
 
 A final PASS means only that bounded perfect physics context materially recovers every selected
 failure cell without excessive action projection, backend saturation, or increased simulator force
@@ -225,8 +229,17 @@ fresh continuous samples and the worst-case boundary point:
 ```
 
 This runs 60 continuous-support and 15 boundary-stress rollouts on seeds 7301--7303. It hashes the
-passing refinement artifact and leaves the original Push OOD configuration unchanged. Only after
-this validation passes should the candidate be activated in Lift learned-policy and oracle gates.
+passing refinement artifact and leaves the original Push OOD configuration unchanged. A matching
+PASS activates the versioned `[0.29, 0.34)` support in Lift learned-policy and oracle manifests;
+both evaluators reject Lift execution without the validation artifact. Push remains on its original
+OOD configuration.
+
+Evaluate only the activated Lift paths with:
+
+```bash
+./scripts/evaluate_calibrated_lift_ood.sh
+./scripts/evaluate_calibrated_lift_oracle.sh development
+```
 
 ## Scientific boundaries
 

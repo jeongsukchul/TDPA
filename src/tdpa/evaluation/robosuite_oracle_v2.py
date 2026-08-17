@@ -20,6 +20,7 @@ from tdpa.controllers.oracle_context import (
 from tdpa.data.nominal_demonstrations import file_sha256
 from tdpa.envs.base import Physics
 from tdpa.envs.make_env import make_env
+from tdpa.envs.physics_config import physics_ood_path, validate_lift_physics_activation
 from tdpa.evaluation.evaluate_nominal_policy import (
     _bootstrap_interval,
     _json_hash,
@@ -89,7 +90,7 @@ def _make_manifest(
     for cell in cells:
         for seed in seeds:
             for episode in range(episodes):
-                physics = _physics_for_cell(cell, seed=seed, episode=episode)
+                physics = _physics_for_cell(cell, seed=seed, episode=episode, task=task)
                 manifest.append(
                     {
                         "task": task,
@@ -130,6 +131,8 @@ def _validate_development_artifact(
     environment_hash: str,
     oracle_config_hash: str,
     adapter_config_hash: str,
+    physics_ood_config_hash: str | None = None,
+    lift_friction_validation_hash: str | None = None,
 ) -> str:
     if path is None:
         raise ValueError("--development-artifact is required in final mode")
@@ -144,6 +147,17 @@ def _validate_development_artifact(
         "oracle_config_sha256": oracle_config_hash,
         "adapter_config_sha256": adapter_config_hash,
     }
+    if task == "lift":
+        if physics_ood_config_hash is None or lift_friction_validation_hash is None:
+            raise ValueError("Lift final gate requires calibrated-friction provenance")
+        expected.update(
+            {
+                "physics_ood_config_sha256": physics_ood_config_hash,
+                "lift_friction_validation_sha256": lift_friction_validation_hash,
+            }
+        )
+    elif artifact.get("physics_ood_config_sha256") is not None:
+        expected["physics_ood_config_sha256"] = physics_ood_config_hash
     mismatched = [key for key, value in expected.items() if artifact.get(key) != value]
     if mismatched:
         raise ValueError(
@@ -466,6 +480,17 @@ def evaluate_oracle_v2(args: argparse.Namespace) -> dict[str, Any]:
     environment_hash = current_environment_hash(args.task)
     oracle_config_hash = _json_hash(oracle_config)
     adapter_config_hash = _json_hash(adapter_config)
+    physics_ood_config_hash = _json_hash(load_yaml(physics_ood_path(args.task)))
+    lift_friction_validation_hash: str | None = None
+    if args.task == "lift" and args.mode != "smoke":
+        if args.lift_friction_validation is None:
+            raise ValueError("Lift oracle-v2 requires --lift-friction-validation")
+        lift_friction_validation_hash = validate_lift_physics_activation(
+            args.lift_friction_validation,
+            environment_hash=environment_hash,
+        )
+    elif args.lift_friction_validation is not None:
+        raise ValueError("--lift-friction-validation is accepted only for non-smoke Lift oracle-v2")
     nominal_success, competence_hash = _load_competence(
         args.competence_artifact,
         task=args.task,
@@ -481,6 +506,8 @@ def evaluate_oracle_v2(args: argparse.Namespace) -> dict[str, Any]:
             environment_hash=environment_hash,
             oracle_config_hash=oracle_config_hash,
             adapter_config_hash=adapter_config_hash,
+            physics_ood_config_hash=physics_ood_config_hash,
+            lift_friction_validation_hash=lift_friction_validation_hash,
         )
     elif args.development_artifact is not None:
         raise ValueError("--development-artifact is accepted only in final mode")
@@ -576,6 +603,8 @@ def evaluate_oracle_v2(args: argparse.Namespace) -> dict[str, Any]:
         "development_artifact_sha256": development_hash,
         "oracle_config_sha256": oracle_config_hash,
         "adapter_config_sha256": adapter_config_hash,
+        "physics_ood_config_sha256": physics_ood_config_hash,
+        "lift_friction_validation_sha256": lift_friction_validation_hash,
         "oracle_revision": oracle_config["revision"],
         "oracle_schedule": oracle_config[args.task],
         "gate_thresholds": oracle_config["gate"],
@@ -590,7 +619,8 @@ def evaluate_oracle_v2(args: argparse.Namespace) -> dict[str, Any]:
         "warning": (
             "Only mass/friction are privileged. Development results may tune later revisions; "
             "final mode is valid only for the identical schedule frozen by its passing development "
-            "artifact. MuJoCo force values remain uncalibrated diagnostics."
+            "artifact. Lift low-friction support requires its held-out feasibility PASS. MuJoCo "
+            "force values remain uncalibrated diagnostics."
         ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -614,6 +644,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--competence-artifact", type=Path)
     parser.add_argument("--development-artifact", type=Path)
+    parser.add_argument("--lift-friction-validation", type=Path)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--strict", action="store_true")

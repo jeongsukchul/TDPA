@@ -13,7 +13,11 @@ import numpy as np
 
 from tdpa.envs.base import Physics
 from tdpa.envs.make_env import make_env
-from tdpa.envs.physics_config import load_physics_config
+from tdpa.envs.physics_config import (
+    load_physics_config,
+    physics_ood_path,
+    validate_lift_physics_activation,
+)
 from tdpa.envs.physics_randomization import PhysicsRandomizer, PhysicsSplit
 from tdpa.policies.learned_nominal import (
     FrozenLearnedNominalPolicy,
@@ -22,7 +26,7 @@ from tdpa.policies.learned_nominal import (
 )
 from tdpa.utils.config import load_yaml
 
-EVALUATION_VERSION = "tdpa-nominal-gate-v2"
+EVALUATION_VERSION = "tdpa-nominal-gate-v3"
 COMPETENCE_SUCCESS_THRESHOLD = 0.8
 EVALUATION_INDEX_START = 20_000
 OOD_CELLS = (
@@ -47,12 +51,12 @@ def _json_hash(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _physics_for_cell(cell: str, *, seed: int, episode: int) -> Physics:
+def _physics_for_cell(cell: str, *, seed: int, episode: int, task: str | None = None) -> Physics:
     train = load_yaml("configs/physics/train.yaml")
     nominal = train["nominal"]
     if cell == "nominal":
         return Physics(float(nominal["mass"]), float(nominal["friction"]))
-    config = load_physics_config()
+    config = load_physics_config(task=task)
     randomizer = PhysicsRandomizer(config, seed)
     if cell == "id":
         sample = randomizer.sample_at(PhysicsSplit.ID, episode)
@@ -114,7 +118,7 @@ def _rollout(
     episode: int,
     policy: FrozenLearnedNominalPolicy,
 ) -> dict[str, Any]:
-    physics = _physics_for_cell(cell, seed=seed, episode=episode)
+    physics = _physics_for_cell(cell, seed=seed, episode=episode, task=task)
     reset_index = EVALUATION_INDEX_START + episode
     env = make_env(
         task,
@@ -191,6 +195,7 @@ def _rollout(
 def evaluate_nominal_policy(args: argparse.Namespace) -> dict[str, Any]:
     seeds, episodes, cells = _resolve_budget(args)
     checkpoint_hash = checkpoint_sha256(args.checkpoint)
+    environment_hash = current_environment_hash(args.task)
     competence_artifact_hash: str | None = None
     if args.mode == "ood":
         if args.competence_artifact is None:
@@ -200,6 +205,17 @@ def evaluate_nominal_policy(args: argparse.Namespace) -> dict[str, Any]:
             task=args.task,
             checkpoint_hash=checkpoint_hash,
         )
+    lift_friction_validation_hash: str | None = None
+    if args.task == "lift" and args.mode == "ood":
+        if args.lift_friction_validation is None:
+            raise ValueError("Lift OOD mode requires --lift-friction-validation")
+        lift_friction_validation_hash = validate_lift_physics_activation(
+            args.lift_friction_validation,
+            environment_hash=environment_hash,
+        )
+    elif args.lift_friction_validation is not None:
+        raise ValueError("--lift-friction-validation is accepted only for Lift OOD mode")
+    ood_config = load_yaml(physics_ood_path(args.task))
     policy = FrozenLearnedNominalPolicy(
         args.checkpoint,
         task=args.task,
@@ -309,8 +325,10 @@ def evaluate_nominal_policy(args: argparse.Namespace) -> dict[str, Any]:
         "task": args.task,
         "checkpoint": str(args.checkpoint),
         "checkpoint_sha256": checkpoint_hash,
-        "environment_hash": current_environment_hash(args.task),
+        "environment_hash": environment_hash,
         "competence_artifact_sha256": competence_artifact_hash,
+        "physics_ood_config_sha256": _json_hash(ood_config),
+        "lift_friction_validation_sha256": lift_friction_validation_hash,
         "manifest_sha256": _json_hash(
             [
                 {key: row[key] for key in ("task", "cell", "seed", "episode", "mass", "friction")}
@@ -333,8 +351,9 @@ def evaluate_nominal_policy(args: argparse.Namespace) -> dict[str, Any]:
             "Lift: object-fingerpad contact norm. Neither is calibrated manipulation-force safety evidence."
         ),
         "warning": (
-            "MuJoCo physics ranges and force units are uncalibrated. OOD output is descriptive; "
-            "this does not establish adaptation or representation-learning claims."
+            "OOD supports are simulator-specific and force units remain uncalibrated. Lift's "
+            "low-friction support is activated only by its held-out feasibility PASS. This output "
+            "is descriptive and does not establish adaptation or representation-learning claims."
         ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -357,6 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task", choices=("push", "lift"), required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--competence-artifact", type=Path)
+    parser.add_argument("--lift-friction-validation", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", nargs="+", type=int)
     parser.add_argument("--episodes", type=int)
