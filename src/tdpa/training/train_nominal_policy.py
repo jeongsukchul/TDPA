@@ -172,6 +172,7 @@ def train_nominal_policy(args: argparse.Namespace) -> dict[str, Any]:
     model = VisualActionChunkBC(
         history_length=args.history_length,
         action_horizon=args.action_horizon,
+        vision_encoder=args.vision_encoder,
     ).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
@@ -268,6 +269,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gripper-weight", type=float, default=1.0)
     parser.add_argument("--history-length", type=int, default=2)
     parser.add_argument("--action-horizon", type=int, default=8)
+    parser.add_argument("--vision-encoder", choices=("spatial", "global"), default="spatial")
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=2026)

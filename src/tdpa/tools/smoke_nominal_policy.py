@@ -52,7 +52,11 @@ def smoke_task(task: str, *, seed: int, directory: Path) -> dict[str, object]:
         normalization=normalization,
     )
     sample = dataset[0]
-    model = VisualActionChunkBC(history_length=2, action_horizon=8)
+    model = VisualActionChunkBC(
+        history_length=2,
+        action_horizon=8,
+        vision_encoder="spatial",
+    )
     with torch.inference_mode():
         prediction = model(
             sample["rgbd_history"].unsqueeze(0),

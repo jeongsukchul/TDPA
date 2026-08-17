@@ -28,6 +28,21 @@ def test_visual_action_chunk_shape_bounds_and_mask_contract() -> None:
         model(rgbd, proprio, torch.zeros_like(mask))
 
 
+def test_spatial_encoder_retains_checkpointed_geometry_contract() -> None:
+    model = VisualActionChunkBC(
+        history_length=2,
+        action_horizon=8,
+        vision_encoder="spatial",
+    )
+    output = model(
+        torch.rand(2, 2, 4, 64, 64),
+        torch.rand(2, 2, 10),
+        torch.ones(2, 2, dtype=torch.bool),
+    )
+    assert output.shape == (2, 8, 4)
+    assert model.model_config()["vision_encoder"] == "spatial"
+
+
 def test_masked_loss_ignores_padded_actions() -> None:
     prediction = torch.zeros(1, 3, 4)
     target = torch.zeros_like(prediction)
@@ -123,3 +138,25 @@ def test_torch_version_provenance_is_normalized_and_legacy_checkpoint_loads(tmp_
 
     policy = FrozenLearnedNominalPolicy(path, task="push", allow_untrained=True)
     assert policy.frozen
+
+
+def test_legacy_global_checkpoint_without_encoder_key_still_loads(tmp_path) -> None:
+    path = tmp_path / "legacy_global.pt"
+    save_nominal_checkpoint(
+        path,
+        model=VisualActionChunkBC(vision_encoder="global"),
+        task="push",
+        normalization={"mean": [0.0] * 10, "std": [1.0] * 10},
+        status="untrained_smoke",
+        provenance={"training_steps": 0, "eligible_for_results": False},
+    )
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    payload["model_config"].pop("vision_encoder")
+    torch.save(payload, path)
+    manifest_path = path.with_suffix(".manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["checkpoint_sha256"] = checkpoint_sha256(path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    policy = FrozenLearnedNominalPolicy(path, task="push", allow_untrained=True)
+    assert policy.model.vision_encoder == "global"
