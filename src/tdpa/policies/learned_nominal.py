@@ -127,7 +127,13 @@ def save_nominal_checkpoint(
         raise ValueError("Checkpoint task must be push or lift")
     if status not in ALLOWED_STATUSES:
         raise ValueError(f"Unknown checkpoint status: {status}")
-    _validate_provenance(status, provenance)
+    try:
+        normalized_provenance = json.loads(json.dumps(dict(provenance), sort_keys=True))
+    except (TypeError, ValueError) as error:
+        raise TypeError("Checkpoint provenance must contain only JSON-safe values") from error
+    if not isinstance(normalized_provenance, dict):
+        raise TypeError("Checkpoint provenance must normalize to a mapping")
+    _validate_provenance(status, normalized_provenance)
     mean = torch.as_tensor(normalization["mean"], dtype=torch.float32)
     std = torch.as_tensor(normalization["std"], dtype=torch.float32)
     if mean.shape != (model.proprio_dim,) or std.shape != (model.proprio_dim,):
@@ -153,7 +159,7 @@ def save_nominal_checkpoint(
         "normalization_mean": mean.cpu(),
         "normalization_std": std.cpu(),
         "model_state": {key: value.detach().cpu() for key, value in model.state_dict().items()},
-        "provenance": dict(provenance),
+        "provenance": normalized_provenance,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, path)
@@ -188,7 +194,11 @@ class FrozenLearnedNominalPolicy:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("checkpoint_sha256") != checkpoint_sha256(self.checkpoint_path):
             raise ValueError("Nominal checkpoint hash does not match its sidecar manifest")
-        payload = torch.load(self.checkpoint_path, map_location="cpu", weights_only=True)
+        # Checkpoints written before the provenance normalizer stored
+        # ``torch.__version__`` as this benign ``str`` subclass. Keep the
+        # restricted weights-only loader and narrowly allowlist that one type.
+        with torch.serialization.safe_globals([torch.torch_version.TorchVersion]):
+            payload = torch.load(self.checkpoint_path, map_location="cpu", weights_only=True)
         if not isinstance(payload, dict):
             raise TypeError("Nominal checkpoint must contain a mapping")
         required = {

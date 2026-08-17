@@ -229,7 +229,7 @@ def train_nominal_policy(args: argparse.Namespace) -> dict[str, Any]:
         "gripper_weight": args.gripper_weight,
         "wall_time_seconds": time.perf_counter() - started,
         "python": platform.python_version(),
-        "torch": torch.__version__,
+        "torch": str(torch.__version__),
         "numpy": np.__version__,
         "attempted_episodes": archive.episode_count,
         "successful_episodes": int(archive.success.sum()),

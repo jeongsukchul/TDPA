@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 import torch
@@ -7,6 +9,7 @@ import torch
 from tdpa.models.nominal_bc import VisualActionChunkBC
 from tdpa.policies.learned_nominal import (
     FrozenLearnedNominalPolicy,
+    checkpoint_sha256,
     save_nominal_checkpoint,
 )
 from tdpa.training.train_nominal_policy import _masked_action_loss
@@ -92,3 +95,31 @@ def test_trained_checkpoint_requires_complete_provenance(tmp_path) -> None:
             status="trained",
             provenance={"training_steps": 1},
         )
+
+
+def test_torch_version_provenance_is_normalized_and_legacy_checkpoint_loads(tmp_path) -> None:
+    path = tmp_path / "legacy.pt"
+    save_nominal_checkpoint(
+        path,
+        model=VisualActionChunkBC(),
+        task="push",
+        normalization={"mean": [0.0] * 10, "std": [1.0] * 10},
+        status="untrained_smoke",
+        provenance={
+            "training_steps": 0,
+            "eligible_for_results": False,
+            "torch": torch.__version__,
+        },
+    )
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    assert type(payload["provenance"]["torch"]) is str
+
+    payload["provenance"]["torch"] = torch.__version__
+    torch.save(payload, path)
+    manifest_path = path.with_suffix(".manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["checkpoint_sha256"] = checkpoint_sha256(path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    policy = FrozenLearnedNominalPolicy(path, task="push", allow_untrained=True)
+    assert policy.frozen
