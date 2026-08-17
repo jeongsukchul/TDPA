@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tdpa"
+version = "0.1.0"
+description = "Task-decoupled physical adaptation research pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+  "torch>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+simulation = ["gymnasium>=0.29", "robosuite>=1.5", "robomimic>=0.4"]
+
+[project.scripts]
+tdpa-collect = "tdpa.data.interaction_collector:main"
+tdpa-sweep-physics = "tdpa.envs.verify_physics:main"
+tdpa-pretrain = "tdpa.training.train_encoder:main"
+tdpa-train-adapter = "tdpa.training.train_adapter:main"
+tdpa-evaluate = "tdpa.evaluation.evaluate_ood:main"
+tdpa-adaptation-curve = "tdpa.evaluation.adaptation_curve:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+

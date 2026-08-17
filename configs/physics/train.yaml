@@ -1,0 +1,9 @@
+seed: 0
+mass:
+  train: [0.6, 1.4]
+friction:
+  train: [0.35, 0.75]
+nominal:
+  mass: 1.0
+  friction: 0.55
+

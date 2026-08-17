@@ -1,0 +1,12 @@
+name: data_efficiency
+seeds: [0, 1, 2]
+data_fractions: [0.01, 0.05, 0.1, 0.2, 0.5, 1.0]
+methods:
+  - no_adaptation
+  - oracle
+  - explicit_sysid
+  - per_task_rma
+  - multitask_rma
+  - pretrained_shared
+evaluation_splits: [id, ood_mass, ood_friction, ood_composition, policy_shift]
+

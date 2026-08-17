@@ -1,0 +1,6 @@
+name: representation_ablation
+seeds: [0, 1, 2]
+variants: [response, distill, hybrid, hybrid_unbalanced, proprio_only, rgbd_proprio, scratch]
+equalize_parameter_counts: true
+equalize_downstream_budgets: true
+

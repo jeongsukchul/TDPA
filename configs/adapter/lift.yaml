@@ -1,0 +1,22 @@
+task: lift
+hidden_dim: 64
+nominal_action_dim: 4
+latent_dim: 32
+proprio_dim: 10
+outputs:
+  cartesian_residual: true
+  velocity_scale: true
+  stiffness: true
+  damping: true
+  grip_force: true
+nominal:
+  velocity_scale: 1.0
+  stiffness: 100.0
+  damping: 15.0
+  grip_force: 18.0
+bounds:
+  residual_max: 0.12
+  velocity_scale: [0.3, 1.35]
+  stiffness: [50.0, 220.0]
+  damping: [5.0, 35.0]
+  grip_force: [3.0, 60.0]

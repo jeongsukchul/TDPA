@@ -1,0 +1,14 @@
+task: lift
+backend: synthetic
+seed: 0
+episode_length: 72
+dt: 0.05
+observation:
+  rgbd: true
+  image_size: 16
+  proprio_dim: 10
+action_dim: 4
+target_height: 0.65
+target_x: 0.45
+success_tolerance: 0.09
+force_limit: 55.0

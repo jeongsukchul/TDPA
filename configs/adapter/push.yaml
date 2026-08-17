@@ -1,0 +1,22 @@
+task: push
+hidden_dim: 64
+nominal_action_dim: 4
+latent_dim: 32
+proprio_dim: 10
+outputs:
+  cartesian_residual: true
+  velocity_scale: true
+  stiffness: true
+  damping: false
+  grip_force: false
+nominal:
+  velocity_scale: 1.0
+  stiffness: 100.0
+  damping: 15.0
+  grip_force: 18.0
+bounds:
+  residual_max: 0.15
+  velocity_scale: [0.35, 1.5]
+  stiffness: [40.0, 180.0]
+  damping: [4.0, 30.0]
+  grip_force: [2.0, 35.0]
