@@ -192,6 +192,20 @@ expert. If it passes while the physics-only oracle fails, the nominal/adaptation
 spatial correction. If it fails, inspect the recorded no-contact, no-grasp, grasp-loss, and
 lift/transport-timeout counts before recalibrating physics or controller bounds.
 
+If low friction fails primarily through grasp loss, run the locked mass--friction calibration grid:
+
+```bash
+./scripts/calibrate_lift_friction.sh
+```
+
+This no-training diagnostic evaluates the maximum bounded high-grip profile on 4 masses x 8
+frictions x 3 seeds x 5 resets (480 rollouts), using seeds 7101--7103 and reset indexes
+90000--90004. Its artifact is
+`artifacts/calibration/lift_friction_calibration_development.json`. A PASS recommends the lowest
+contiguous tested friction interval for which every mass point passes the success, uncertainty,
+force, and saturation thresholds. The recommendation is not applied automatically: review and
+version it as a task-specific calibration before rerunning any OOD claim gate.
+
 ## Scientific boundaries
 
 - Deployment models receive only RGB-D, proprioception, and action history.
