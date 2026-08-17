@@ -1,0 +1,24 @@
+version: tdpa-lift-friction-validation-v1
+task: lift
+source_refinement_artifact: artifacts/calibration/lift_friction_refinement_development.json
+candidate_ood_config: configs/physics/ood_lift_calibrated_v1.yaml
+
+protocol:
+  seeds: [7301, 7302, 7303]
+  uniform_episodes_per_seed: 20
+  uniform_reset_index_start: 110000
+  boundary_episodes_per_seed: 5
+  boundary_reset_index_start: 110100
+  mass_support: [0.60, 1.40]
+  friction_support: [0.29, 0.34]
+  boundary_mass: 1.40
+  boundary_friction: 0.29
+  controller_profile: high_grip
+
+gate:
+  uniform_minimum_success_rate: 0.80
+  uniform_minimum_success_ci_lower: 0.65
+  boundary_minimum_success_rate: 0.80
+  boundary_minimum_success_ci_lower: 0.60
+  maximum_force_violation_rate: 0.10
+  maximum_controller_saturation_rate: 0.0

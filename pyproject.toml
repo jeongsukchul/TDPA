@@ -35,6 +35,7 @@ tdpa-evaluate-oracle = "tdpa.evaluation.robosuite_oracle_v2:main"
 tdpa-evaluate-oracle-v1 = "tdpa.evaluation.robosuite_oracle_gate:main"
 tdpa-lift-feasibility = "tdpa.evaluation.lift_feasibility:main"
 tdpa-calibrate-lift-friction = "tdpa.evaluation.lift_friction_calibration:main"
+tdpa-validate-lift-friction = "tdpa.evaluation.lift_friction_validation:main"
 tdpa-smoke-nominal = "tdpa.tools.smoke_nominal_policy:main"
 
 [tool.setuptools.packages.find]

@@ -217,6 +217,17 @@ The refinement tests frictions 0.29--0.34 at all four masses with seeds 7201--72
 indexes 100000--100004 (360 rollouts). It requires and hashes the unmodified coarse artifact before
 starting. The result is `artifacts/calibration/lift_friction_refinement_development.json`.
 
+After a refinement PASS recommending `[0.29, 0.34]`, validate the versioned Lift-only candidate on
+fresh continuous samples and the worst-case boundary point:
+
+```bash
+./scripts/validate_lift_friction_support.sh
+```
+
+This runs 60 continuous-support and 15 boundary-stress rollouts on seeds 7301--7303. It hashes the
+passing refinement artifact and leaves the original Push OOD configuration unchanged. Only after
+this validation passes should the candidate be activated in Lift learned-policy and oracle gates.
+
 ## Scientific boundaries
 
 - Deployment models receive only RGB-D, proprioception, and action history.
