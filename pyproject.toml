@@ -12,11 +12,13 @@ dependencies = [
   "numpy>=1.26",
   "PyYAML>=6.0",
   "torch>=2.2",
+  "h5py>=3.10",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
-simulation = ["gymnasium>=0.29", "robosuite>=1.5", "robomimic>=0.4"]
+simulation = ["mujoco==3.3.7", "robosuite==1.5.2"]
+training = ["gymnasium>=0.29", "robomimic>=0.4"]
 
 [project.scripts]
 tdpa-collect = "tdpa.data.interaction_collector:main"
@@ -25,6 +27,11 @@ tdpa-pretrain = "tdpa.training.train_encoder:main"
 tdpa-train-adapter = "tdpa.training.train_adapter:main"
 tdpa-evaluate = "tdpa.evaluation.evaluate_ood:main"
 tdpa-adaptation-curve = "tdpa.evaluation.adaptation_curve:main"
+tdpa-smoke-robosuite = "tdpa.tools.smoke_robosuite:main"
+tdpa-collect-nominal = "tdpa.data.collect_nominal_demos:main"
+tdpa-train-nominal = "tdpa.training.train_nominal_policy:main"
+tdpa-evaluate-nominal = "tdpa.evaluation.evaluate_nominal_policy:main"
+tdpa-smoke-nominal = "tdpa.tools.smoke_nominal_policy:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -32,8 +39,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["simulation: requires the optional robosuite / MuJoCo stack"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-

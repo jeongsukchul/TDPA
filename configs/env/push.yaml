@@ -11,3 +11,36 @@ action_dim: 4
 target_position: [0.75, 0.0]
 success_tolerance: 0.08
 force_limit: 24.0
+robosuite:
+  # Uncalibrated simulator-smoke settings; not yet a research OOD range.
+  robot: Panda
+  controller: OSC_POSITION
+  control_frequency: 20
+  position_delta_limit: 0.05
+  image_size: 64
+  camera_name: agentview
+  depth_limit: 2.0
+  render_gpu_device_id: -1
+  table_full_size: [0.8, 0.8, 0.05]
+  object_half_size: [0.025, 0.025, 0.025]
+  base_friction: [1.0, 0.005, 0.0001]
+  table_contact_geoms: [table_collision]
+  target_position: [0.14, 0.0, 0.825]
+  success_tolerance: 0.06
+  execution:
+    nominal:
+      velocity_scale: 1.0
+      stiffness: 100.0
+      damping: 15.0
+      grip_force: 18.0
+    bounds:
+      velocity_scale: [0.35, 1.5]
+      stiffness: [40.0, 180.0]
+      damping: [4.0, 30.0]
+      grip_force: [2.0, 35.0]
+  reset:
+    robot_qpos_half_range: 0.01
+    object_xy_center: [-0.01, 0.0]
+    object_xy_half_range: [0.02, 0.025]
+    object_yaw_range: 3.141592653589793
+    target_xyz_half_range: [0.01, 0.015, 0.0]

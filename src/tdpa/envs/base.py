@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -33,6 +33,74 @@ class Physics:
             raise ValueError("mass must be positive")
         if self.friction < 0:
             raise ValueError("friction must be non-negative")
+
+
+@dataclass(frozen=True)
+class GeomPhysicsReadback:
+    """One live MuJoCo geom value resolved by name and numeric model ID."""
+
+    name: str
+    geom_id: int
+    friction: tuple[float, float, float]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "geom_id": self.geom_id,
+            "friction": list(self.friction),
+        }
+
+
+@dataclass(frozen=True)
+class PhysicsReadback:
+    """Fresh backend readback, kept separate from deployable observations."""
+
+    backend: str
+    requested_mass: float
+    requested_friction: float
+    actual_mass: float
+    body_name: str
+    body_id: int
+    body_inertia: tuple[float, ...]
+    object_geoms: tuple[GeomPhysicsReadback, ...]
+    counterpart_geoms: tuple[GeomPhysicsReadback, ...]
+    topology_signature: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "backend": self.backend,
+            "requested_mass": self.requested_mass,
+            "requested_friction": self.requested_friction,
+            "actual_mass": self.actual_mass,
+            "body_name": self.body_name,
+            "body_id": self.body_id,
+            "body_inertia": list(self.body_inertia),
+            "object_geoms": [geom.as_dict() for geom in self.object_geoms],
+            "counterpart_geoms": [geom.as_dict() for geom in self.counterpart_geoms],
+            "topology_signature": self.topology_signature,
+        }
+
+
+@runtime_checkable
+class ManipulationEnv(Protocol):
+    """Backend-neutral subset consumed by TDPA data and evaluation code."""
+
+    config: dict[str, Any]
+    horizon: int
+    image_size: int
+    force_limit: float
+
+    def reset(self) -> dict[str, np.ndarray]: ...
+
+    def step(
+        self, action: np.ndarray, controller: dict[str, float] | None = None
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]: ...
+
+    def metrics(self) -> dict[str, float | bool]: ...
+
+    def read_physics(self) -> PhysicsReadback: ...
+
+    def close(self) -> None: ...
 
 
 class SyntheticManipulationEnv:
@@ -160,3 +228,19 @@ class SyntheticManipulationEnv:
     def metrics(self) -> dict[str, float | bool]:
         raise NotImplementedError
 
+    def read_physics(self) -> PhysicsReadback:
+        return PhysicsReadback(
+            backend="synthetic",
+            requested_mass=self.physics.mass,
+            requested_friction=self.physics.friction,
+            actual_mass=self.physics.mass,
+            body_name="synthetic_object",
+            body_id=-1,
+            body_inertia=(),
+            object_geoms=(),
+            counterpart_geoms=(),
+            topology_signature=f"synthetic:{self.task}:v1",
+        )
+
+    def close(self) -> None:
+        """Match the backend-neutral lifecycle contract."""

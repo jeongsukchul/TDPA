@@ -9,8 +9,9 @@ objectives, adapters, early baselines, diagnostics, and experiment accounting sp
 The default backend is a deterministic, low-cost manipulation surrogate. It makes the complete
 pipeline and its scientific sanity checks runnable without MuJoCo, robosuite, demonstrations, or
 a GPU. It is an infrastructure and hypothesis-debugging backend, not evidence for a robotics
-claim. The environment factory keeps the backend boundary explicit so robosuite tasks can replace
-it without changing datasets, encoders, adapters, or evaluation code.
+claim. A separate robosuite / MuJoCo backend now validates real simulator construction, RGB-D,
+contacts, indexed resets, live mass/friction mutation, and bounded OSC gain / Panda gripper-force
+commands. The learned nominal-policy path is task-specific and separate from the synthetic policy.
 
 ## Quick start
 
@@ -36,6 +37,96 @@ pytest -q
 
 The shell entry points in `scripts/` run the same stages. Outputs under `artifacts/` and `runs/`
 are ignored by git.
+
+## MuJoCo smoke gate (no training)
+
+The checked-in Conda environment pins the tested robosuite / MuJoCo API pair. On this machine the
+environment is already named `TDPA`; reproduce or update it, then run only the simulator gate:
+
+```bash
+conda env update -n TDPA -f environment.yml --prune
+conda activate TDPA
+export MUJOCO_GL=egl
+
+python -m pytest -q
+python -m pytest -q -m simulation tests/test_robosuite_backend.py
+python -m tdpa.tools.smoke_robosuite \
+  --task all --seed 7 --steps 10 --output artifacts/robosuite_smoke.json
+python -m tdpa.tools.verify_physics \
+  --backend robosuite --task push --seed 7 --count 2 \
+  --output artifacts/robosuite_push_physics.json
+python -m tdpa.tools.verify_physics \
+  --backend robosuite --task lift --seed 7 --count 2 \
+  --output artifacts/robosuite_lift_physics.json
+```
+
+Use `MUJOCO_GL=osmesa` only as the CPU-rendering fallback if EGL is unavailable. The smoke contact
+probe uses privileged object placement solely to verify table and finger-pad contacts. It is not a
+task policy, an OOD recovery result, or evidence about representation learning.
+
+## Frozen nominal-policy gate
+
+Run the implementation smoke before spending time on demonstrations or training. It collects six
+small scripted episodes per task, checks causal action chunks, runs a BC forward pass, executes its
+frozen wrapper in MuJoCo, and exercises low/high/reset controller readback. It performs no training.
+Its checkpoints are marked `untrained_smoke`, rejected by the production loader, and ineligible for
+result tables.
+
+```bash
+conda activate TDPA
+export MUJOCO_GL=egl
+
+python -m tdpa.tools.smoke_nominal_policy \
+  --task all --seed 71 --output artifacts/nominal_policy_smoke.json
+```
+
+After that passes, these are the substantive commands to run. Collection uses privileged object and
+target state only inside the scripted labeler. Model batches contain only causal RGB-D,
+proprioception, and future Cartesian/gripper actions. The split is episode-disjoint, normalization
+is fitted on training episodes only, and Push / Lift receive separate checkpoints.
+
+```bash
+# 1. Collect nominal demonstrations. Failed attempts remain auditable but are not trained on.
+python -m tdpa.data.collect_nominal_demos \
+  --task push --episodes 200 --seed 100 \
+  --output artifacts/nominal/push_demos.hdf5
+python -m tdpa.data.collect_nominal_demos \
+  --task lift --episodes 200 --seed 200 \
+  --output artifacts/nominal/lift_demos.hdf5
+
+# 2. Train task-specific visual action-chunk BC policies.
+python -m tdpa.training.train_nominal_policy \
+  --task push --dataset artifacts/nominal/push_demos.hdf5 \
+  --epochs 100 --device auto --output artifacts/nominal/push_bc.pt
+python -m tdpa.training.train_nominal_policy \
+  --task lift --dataset artifacts/nominal/lift_demos.hdf5 \
+  --epochs 100 --device auto --output artifacts/nominal/lift_bc.pt
+
+# 3. First require >=80% closed-loop nominal success on a locked 3x20 manifest.
+python -m tdpa.evaluation.evaluate_nominal_policy \
+  --mode competence --task push --checkpoint artifacts/nominal/push_bc.pt \
+  --seeds 11 22 33 --episodes 20 --output artifacts/nominal/push_competence.json
+python -m tdpa.evaluation.evaluate_nominal_policy \
+  --mode competence --task lift --checkpoint artifacts/nominal/lift_bc.pt \
+  --seeds 11 22 33 --episodes 20 --output artifacts/nominal/lift_competence.json
+
+# 4. Only after competence passes, measure ID/OOD directionality on paired resets.
+python -m tdpa.evaluation.evaluate_nominal_policy \
+  --mode ood --task push --checkpoint artifacts/nominal/push_bc.pt \
+  --competence-artifact artifacts/nominal/push_competence.json \
+  --seeds 11 22 33 --episodes 20 --output artifacts/nominal/push_ood_gate.json
+python -m tdpa.evaluation.evaluate_nominal_policy \
+  --mode ood --task lift --checkpoint artifacts/nominal/lift_bc.pt \
+  --competence-artifact artifacts/nominal/lift_competence.json \
+  --seeds 11 22 33 --episodes 20 --output artifacts/nominal/lift_ood_gate.json
+```
+
+A low cloning loss is not policy competence. Do not begin adaptation or representation training
+unless both task-specific nominal competence gates pass. The OOD output is descriptive: use its
+separate low/high cells and paired intervals to decide whether there is a meaningful degradation to
+recover. The gripper limit is a per-actuator simulator force cap, not a calibrated total
+grasp/contact-force claim; the Push object-table force is likewise only a friction-interface
+diagnostic.
 
 ## Scientific boundaries
 
