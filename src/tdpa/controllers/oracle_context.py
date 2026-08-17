@@ -169,9 +169,11 @@ class RobosuitePerfectContextOracleV2:
         self.bounds = dict(adapter_config["bounds"])
         self.enabled = enabled
         self._lift_phase_active = False
+        self._lift_close_steps = 0
 
     def reset(self) -> None:
         self._lift_phase_active = False
+        self._lift_close_steps = 0
 
     @staticmethod
     def _positive_ratio(value: float, nominal: float, name: str) -> float:
@@ -225,40 +227,66 @@ class RobosuitePerfectContextOracleV2:
             velocity = 1.0 + float(schedule["velocity_correction_gain"]) * (
                 friction_velocity - 1.0
             )
-            velocity = float(
+            requested_velocity = float(
                 np.clip(
                     velocity,
                     float(schedule["velocity_scale_minimum"]),
                     float(schedule["velocity_scale_maximum"]),
                 )
             )
+            velocity = requested_velocity
+            peak_action = float(np.max(np.abs(action[:3])))
+            if peak_action > 0.0:
+                velocity = min(
+                    velocity,
+                    float(schedule["action_headroom_margin"]) / peak_action,
+                )
             stiffness = (
                 100.0
                 * mass_ratio ** float(schedule["stiffness_mass_exponent"])
                 * friction_ratio ** float(schedule["stiffness_friction_exponent"])
             )
             raw = {
-                "velocity_scale": velocity,
+                "velocity_scale": requested_velocity,
                 "cartesian_residual": np.zeros(3, dtype=np.float32),
                 "stiffness": stiffness,
                 "damping": 15.0,
                 "grip_force": 18.0,
             }
-            return OracleV2Decision(raw, self._bounded(raw), "push")
+            bounded = self._bounded(raw)
+            bounded["velocity_scale"] = velocity
+            return OracleV2Decision(raw, bounded, "push")
 
         schedule = self.config["lift"]
         close_requested = float(action[3]) >= float(schedule["close_command_threshold"])
         gripper_narrow = float(proprio[6]) <= float(schedule["gripper_width_threshold"])
         upward_requested = float(action[2]) > float(schedule["upward_action_threshold"])
-        self._lift_phase_active = self._lift_phase_active or (
-            close_requested and (gripper_narrow or upward_requested)
+        if close_requested:
+            self._lift_phase_active = True
+            self._lift_close_steps += 1
+        mass_excess = max(mass_ratio - 1.0, 0.0)
+        friction_deficit = max(friction_ratio**-0.5 - 1.0, 0.0)
+        settle_steps = int(
+            np.ceil(
+                float(schedule["settle_steps_base"])
+                + float(schedule["settle_steps_mass_gain"]) * mass_excess
+                + float(schedule["settle_steps_friction_gain"]) * friction_deficit
+            )
         )
-        lift_phase = self._lift_phase_active and upward_requested
+        if not gripper_narrow:
+            settle_steps += int(schedule["settle_wide_gripper_extra_steps"])
+        settle_phase = self._lift_phase_active and self._lift_close_steps <= settle_steps
+        lift_phase = self._lift_phase_active and not settle_phase and upward_requested
         residual = np.zeros(3, dtype=np.float32)
-        if lift_phase:
+        if settle_phase and upward_requested:
+            residual[2] = -min(
+                max(float(action[2]), 0.0),
+                float(schedule["settle_vertical_cancel_maximum"]),
+            )
+        elif lift_phase:
             requested = (
                 float(schedule["vertical_residual_gain"])
-                * max(mass_ratio - 1.0, 0.0)
+                * mass_excess
                 * max(float(action[2]), 0.0)
             )
             residual[2] = float(
@@ -276,5 +304,18 @@ class RobosuitePerfectContextOracleV2:
                 * friction_ratio ** float(schedule["grip_friction_exponent"])
             ),
         }
-        phase = "lift" if lift_phase else ("closed" if self._lift_phase_active else "approach")
-        return OracleV2Decision(raw, self._bounded(raw), phase)
+        bounded = self._bounded(raw)
+        margin = float(schedule["action_headroom_margin"])
+        motion = action[:3] * float(bounded["velocity_scale"])
+        bounded["cartesian_residual"] = np.clip(
+            np.asarray(bounded["cartesian_residual"]),
+            -margin - motion,
+            margin - motion,
+        ).astype(np.float32)
+        if settle_phase:
+            phase = "settle"
+        elif lift_phase:
+            phase = "lift"
+        else:
+            phase = "closed" if self._lift_phase_active else "approach"
+        return OracleV2Decision(raw, bounded, phase)

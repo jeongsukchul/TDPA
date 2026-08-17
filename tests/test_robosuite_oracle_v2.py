@@ -5,8 +5,10 @@ import json
 import numpy as np
 import pytest
 
+from tdpa.controllers.adapter_action_mapper import AdapterActionMapper
 from tdpa.controllers.oracle_context import RobosuitePerfectContextOracleV2
 from tdpa.envs.base import Physics
+from tdpa.envs.make_env import make_env
 from tdpa.evaluation.evaluate_nominal_policy import _json_hash
 from tdpa.evaluation.robosuite_oracle_v2 import (
     DEFAULT_CELLS,
@@ -53,16 +55,17 @@ def test_push_v2_limits_velocity_but_preserves_stiffness_compensation() -> None:
     oracle = _oracle("push")
     decision = oracle.decide(
         Physics(1.3, 1.2),
-        np.asarray([0.9, 0.0, 0.0, -1.0], dtype=np.float32),
+        np.asarray([0.99, 0.0, 0.0, -1.0], dtype=np.float32),
         _observation(),
     )
     assert 1.0 < decision.correction["velocity_scale"] <= 1.1
+    assert 0.99 * decision.correction["velocity_scale"] <= 0.999
     assert decision.correction["stiffness"] > 100.0
     assert np.array_equal(decision.correction["cartesian_residual"], np.zeros(3))
     assert _command_projected(decision)
 
 
-def test_lift_v2_preserves_timing_and_adds_only_causal_mass_residual() -> None:
+def test_lift_v2_preserves_timing_with_causal_settle_then_mass_residual() -> None:
     oracle = _oracle("lift")
     approach = oracle.decide(
         Physics(2.0, 0.11),
@@ -73,15 +76,25 @@ def test_lift_v2_preserves_timing_and_adds_only_causal_mass_residual() -> None:
     assert approach.correction["velocity_scale"] == 1.0
     assert approach.correction["cartesian_residual"][2] == 0.0
 
-    lift = oracle.decide(
+    settle = oracle.decide(
         Physics(2.0, 0.11),
         np.asarray([0.0, 0.0, 0.5, 1.0], dtype=np.float32),
         _observation(),
     )
+    assert settle.phase == "settle"
+    assert settle.correction["velocity_scale"] == 1.0
+    assert settle.correction["cartesian_residual"][2] == pytest.approx(-0.10)
+    assert settle.correction["grip_force"] > 18.0
+
+    lift = settle
+    for _ in range(12):
+        lift = oracle.decide(
+            Physics(2.0, 0.11),
+            np.asarray([0.0, 0.0, 0.5, 1.0], dtype=np.float32),
+            _observation(gripper_width=0.04),
+        )
     assert lift.phase == "lift"
-    assert lift.correction["velocity_scale"] == 1.0
-    assert 0.0 < lift.correction["cartesian_residual"][2] <= 0.10
-    assert lift.correction["grip_force"] > 18.0
+    assert 0.0 < lift.correction["cartesian_residual"][2] <= 0.04
 
     oracle.reset()
     light = oracle.decide(
@@ -89,8 +102,8 @@ def test_lift_v2_preserves_timing_and_adds_only_causal_mass_residual() -> None:
         np.asarray([0.0, 0.0, 0.5, 1.0], dtype=np.float32),
         _observation(gripper_width=0.04),
     )
-    assert light.phase == "lift"
-    assert light.correction["cartesian_residual"][2] == 0.0
+    assert light.phase == "settle"
+    assert light.correction["cartesian_residual"][2] < 0.0
 
 
 def test_development_and_final_manifests_are_disjoint_and_locked() -> None:
@@ -199,3 +212,41 @@ def test_v2_gate_requires_pairing_recovery_bounds_and_force_diagnostic() -> None
         cells=("ood_mass_high",),
         gate_config=load_yaml("configs/oracle/robosuite_perfect_context_v2.yaml")["gate"],
     )["passed"]
+
+
+@pytest.mark.simulation
+def test_lift_settle_to_lift_transition_reaches_live_controller() -> None:
+    pytest.importorskip("robosuite")
+    adapter_config = load_yaml("configs/adapter/lift.yaml")
+    oracle = _oracle("lift")
+    mapper = AdapterActionMapper(adapter_config)
+    physics = Physics(2.0, 0.11)
+    env = make_env(
+        "lift",
+        physics=physics,
+        seed=919,
+        episode_index=60_001,
+        backend="robosuite",
+    )
+    try:
+        observation = env.reset()
+        phases = []
+        for _ in range(14):
+            nominal = np.asarray([0.0, 0.0, 0.5, 1.0], dtype=np.float32)
+            decision = oracle.decide(physics, nominal, observation)
+            phases.append(decision.phase)
+            applied = mapper.apply(nominal, decision.correction)
+            observation, _, terminated, truncated, _ = env.step(
+                applied.action, applied.controller
+            )
+            assert np.isfinite(observation["proprio"]).all()
+            if terminated or truncated:
+                break
+        assert phases[0] == "settle"
+        assert "lift" in phases
+        readback = env.controller_readback()
+        for key in ("stiffness", "damping", "grip_force"):
+            assert readback["applied"][key] == pytest.approx(applied.controller[key])
+        assert not readback["saturated"]
+    finally:
+        env.close()

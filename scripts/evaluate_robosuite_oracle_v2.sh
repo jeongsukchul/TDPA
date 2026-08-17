@@ -9,6 +9,8 @@ fi
 
 export MUJOCO_GL="${MUJOCO_GL:-egl}"
 device="${TDPA_DEVICE:-cpu}"
+revision="$(python -c 'from tdpa.utils.config import load_yaml; print(load_yaml("configs/oracle/robosuite_perfect_context_v2.yaml")["revision"])')"
+revision_tag="r${revision}"
 
 push_checkpoint="${TDPA_PUSH_CHECKPOINT:-artifacts/nominal/push_bc.pt}"
 push_competence="${TDPA_PUSH_COMPETENCE:-artifacts/nominal/push_competence.json}"
@@ -17,8 +19,10 @@ lift_competence="${TDPA_LIFT_COMPETENCE:-artifacts/nominal/lift_competence_spati
 
 if [[ "$stage" == "final" ]]; then
   python - \
-    "$push_checkpoint" "$push_competence" "artifacts/nominal/push_oracle_v2_development.json" \
-    "$lift_checkpoint" "$lift_competence" "artifacts/nominal/lift_oracle_v2_development.json" <<'PY'
+    "$push_checkpoint" "$push_competence" \
+    "artifacts/nominal/push_oracle_v2_${revision_tag}_development.json" \
+    "$lift_checkpoint" "$lift_competence" \
+    "artifacts/nominal/lift_oracle_v2_${revision_tag}_development.json" <<'PY'
 import sys
 from pathlib import Path
 
@@ -56,7 +60,7 @@ for task in push lift; do
     checkpoint="$lift_checkpoint"
     competence="$lift_competence"
   fi
-  output="artifacts/nominal/${task}_oracle_v2_${stage}.json"
+  output="artifacts/nominal/${task}_oracle_v2_${revision_tag}_${stage}.json"
   command=(
     python -m tdpa.evaluation.robosuite_oracle_v2
     --mode "$stage"
@@ -68,7 +72,7 @@ for task in push lift; do
   )
   if [[ "$stage" == "final" ]]; then
     command+=(
-      --development-artifact "artifacts/nominal/${task}_oracle_v2_development.json"
+      --development-artifact "artifacts/nominal/${task}_oracle_v2_${revision_tag}_development.json"
     )
   fi
   "${command[@]}"
