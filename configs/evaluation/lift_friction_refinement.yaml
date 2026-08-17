@@ -1,0 +1,21 @@
+version: tdpa-lift-friction-refinement-v1
+task: lift
+
+# This stage was predeclared only after the coarse v1 calibration found that
+# mu=0.28 failed at 1.40 kg while mu=0.30 passed at every tested mass.
+source_artifact: artifacts/calibration/lift_friction_calibration_development.json
+protocol:
+  mass_grid: [0.60, 0.90, 1.20, 1.40]
+  friction_grid: [0.29, 0.30, 0.31, 0.32, 0.33, 0.34]
+  seeds: [7201, 7202, 7203]
+  episodes_per_seed_point: 5
+  reset_index_start: 100000
+  controller_profile: high_grip
+
+gate:
+  minimum_point_success_rate: 0.80
+  minimum_point_success_ci_lower: 0.60
+  maximum_force_violation_rate: 0.10
+  maximum_controller_saturation_rate: 0.0
+  minimum_contiguous_feasible_levels: 2
+  train_friction_lower_bound: 0.35

@@ -17,6 +17,11 @@ from tdpa.policies.privileged_expert import PrivilegedScriptedExpert
 from tdpa.utils.config import load_yaml
 
 CALIBRATION_VERSION = "tdpa-lift-friction-calibration-v1"
+REFINEMENT_VERSION = "tdpa-lift-friction-refinement-v1"
+STAGE_CONFIGS = {
+    "calibration": "configs/evaluation/lift_friction_calibration.yaml",
+    "refinement": "configs/evaluation/lift_friction_refinement.yaml",
+}
 
 
 def _resolve_protocol(
@@ -27,16 +32,64 @@ def _resolve_protocol(
     frictions = [float(value) for value in protocol["friction_grid"]]
     if masses != [0.60, 0.90, 1.20, 1.40]:
         raise ValueError("Lift calibration mass grid is not locked")
-    if frictions != [0.16, 0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]:
-        raise ValueError("Lift calibration friction grid is not locked")
+    version = str(config.get("version"))
+    if version == CALIBRATION_VERSION:
+        expected_frictions = [0.16, 0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
+        expected_seeds = [7101, 7102, 7103]
+        expected_start = 90_000
+        smoke_seed = 19
+        smoke_start = 95_000
+        stage_name = "calibration"
+    elif version == REFINEMENT_VERSION:
+        expected_frictions = [0.29, 0.30, 0.31, 0.32, 0.33, 0.34]
+        expected_seeds = [7201, 7202, 7203]
+        expected_start = 100_000
+        smoke_seed = 29
+        smoke_start = 105_000
+        stage_name = "refinement"
+    else:
+        raise ValueError("Unsupported Lift friction-calibration version")
+    if frictions != expected_frictions:
+        raise ValueError(f"Lift {stage_name} friction grid is not locked")
     if mode == "smoke":
-        return [masses[0], masses[-1]], [frictions[0], frictions[-1]], [19], 95_000, 1
+        return (
+            [masses[0], masses[-1]],
+            [frictions[0], frictions[-1]],
+            [smoke_seed],
+            smoke_start,
+            1,
+        )
     seeds = [int(seed) for seed in protocol["seeds"]]
     episodes = int(protocol["episodes_per_seed_point"])
     index_start = int(protocol["reset_index_start"])
-    if seeds != [7101, 7102, 7103] or episodes != 5 or index_start != 90_000:
-        raise ValueError("Lift calibration development protocol is not locked")
+    if seeds != expected_seeds or episodes != 5 or index_start != expected_start:
+        raise ValueError(f"Lift {stage_name} development protocol is not locked")
     return masses, frictions, seeds, index_start, episodes
+
+
+def _validate_refinement_source(
+    path: Path, *, environment_hash: str, calibration_config_hash: str
+) -> str:
+    artifact = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        artifact.get("calibration_version") != CALIBRATION_VERSION
+        or artifact.get("mode") != "development"
+        or artifact.get("status") != "FAIL"
+    ):
+        raise ValueError("Refinement requires the failed coarse calibration artifact")
+    if artifact.get("environment_hash") != environment_hash:
+        raise ValueError("Refinement source environment does not match the live environment")
+    if artifact.get("config_sha256") != calibration_config_hash:
+        raise ValueError("Refinement source does not match the locked coarse configuration")
+    if artifact.get("failures") or not artifact.get("gate", {}).get("paired_resets_pass"):
+        raise ValueError("Refinement source has rollout attrition or unpaired resets")
+    levels = {
+        float(level["friction"]): bool(level["all_masses_feasible"])
+        for level in artifact.get("gate", {}).get("levels", [])
+    }
+    if levels.get(0.28) is not False or levels.get(0.30) is not True:
+        raise ValueError("Refinement source does not contain the observed 0.28/0.30 boundary")
+    return _json_hash(artifact)
 
 
 def _make_manifest(
@@ -174,8 +227,10 @@ def _frontier_decision(
 
 
 def calibrate_lift_friction(args: argparse.Namespace) -> dict[str, Any]:
-    config = load_yaml("configs/evaluation/lift_friction_calibration.yaml")
-    if config.get("version") != CALIBRATION_VERSION or config.get("task") != "lift":
+    stage = str(getattr(args, "stage", "calibration"))
+    config = load_yaml(STAGE_CONFIGS[stage])
+    expected_version = CALIBRATION_VERSION if stage == "calibration" else REFINEMENT_VERSION
+    if config.get("version") != expected_version or config.get("task") != "lift":
         raise ValueError("Unsupported Lift friction-calibration configuration")
     masses, frictions, seeds, index_start, episodes = _resolve_protocol(config, args.mode)
     feasibility_config = load_yaml("configs/evaluation/lift_feasibility.yaml")
@@ -193,6 +248,16 @@ def calibrate_lift_friction(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("Calibration profile does not use the locked maximum grip-force bound")
     if max(frictions) >= float(config["gate"]["train_friction_lower_bound"]):
         raise ValueError("Calibration grid overlaps the declared training-friction support")
+    environment_hash = current_environment_hash("lift")
+    source_calibration_sha256 = None
+    if stage == "refinement" and args.mode == "development":
+        source_calibration_sha256 = _validate_refinement_source(
+            Path(config["source_artifact"]),
+            environment_hash=environment_hash,
+            calibration_config_hash=_json_hash(
+                load_yaml("configs/evaluation/lift_friction_calibration.yaml")
+            ),
+        )
 
     manifest = _make_manifest(
         masses=masses,
@@ -210,9 +275,7 @@ def calibrate_lift_friction(args: argparse.Namespace) -> dict[str, Any]:
         except Exception as error:  # noqa: BLE001 - retain calibration attrition
             failures.append({**spec, "exception": f"{type(error).__name__}: {error}"})
         if completed % interval == 0 or completed == len(manifest):
-            print(
-                f"[{args.mode} lift friction calibration] {completed}/{len(manifest)}", flush=True
-            )
+            print(f"[{args.mode} lift friction {stage}] {completed}/{len(manifest)}", flush=True)
 
     complete = len(rows) == len(manifest) and not failures
     fingerprints: dict[tuple[int, int], set[str]] = {}
@@ -235,7 +298,8 @@ def calibrate_lift_friction(args: argparse.Namespace) -> dict[str, Any]:
         gate = {"passed": complete and paired_resets_pass, "scope": "plumbing_only"}
 
     result = {
-        "calibration_version": CALIBRATION_VERSION,
+        "calibration_version": expected_version,
+        "calibration_stage": stage,
         "mode": args.mode,
         "status": "PASS" if gate["passed"] else "FAIL",
         "scope": "privileged empirical Lift grasp-feasibility calibration",
@@ -245,9 +309,10 @@ def calibrate_lift_friction(args: argparse.Namespace) -> dict[str, Any]:
         "seeds": seeds,
         "episodes_per_seed_point": episodes,
         "reset_index_start": index_start,
-        "environment_hash": current_environment_hash("lift"),
+        "environment_hash": environment_hash,
         "config_sha256": _json_hash(config),
         "feasibility_config_sha256": _json_hash(feasibility_config),
+        "source_calibration_sha256": source_calibration_sha256,
         "expert_version": PrivilegedScriptedExpert.version,
         "controller_profile_name": profile_name,
         "controller_profile": profile,
@@ -279,6 +344,7 @@ def calibrate_lift_friction(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stage", choices=tuple(STAGE_CONFIGS), default="calibration")
     parser.add_argument("--mode", choices=("smoke", "development"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--strict", action="store_true")

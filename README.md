@@ -206,6 +206,17 @@ contiguous tested friction interval for which every mass point passes the succes
 force, and saturation thresholds. The recommendation is not applied automatically: review and
 version it as a task-specific calibration before rerunning any OOD claim gate.
 
+If the coarse grid finds only `0.30` feasible at every mass, preserve its FAIL artifact and run the
+fresh-seed boundary refinement:
+
+```bash
+./scripts/refine_lift_friction.sh
+```
+
+The refinement tests frictions 0.29--0.34 at all four masses with seeds 7201--7203 and reset
+indexes 100000--100004 (360 rollouts). It requires and hashes the unmodified coarse artifact before
+starting. The result is `artifacts/calibration/lift_friction_refinement_development.json`.
+
 ## Scientific boundaries
 
 - Deployment models receive only RGB-D, proprioception, and action history.

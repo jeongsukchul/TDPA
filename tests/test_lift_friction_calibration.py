@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
+from tdpa.evaluation.evaluate_nominal_policy import _json_hash
 from tdpa.evaluation.lift_feasibility import _validate_profiles
 from tdpa.evaluation.lift_friction_calibration import (
+    CALIBRATION_VERSION,
     _frontier_decision,
     _make_manifest,
     _resolve_protocol,
+    _validate_refinement_source,
 )
 from tdpa.utils.config import load_yaml
 
 
 def _config():
     return load_yaml("configs/evaluation/lift_friction_calibration.yaml")
+
+
+def _refinement_config():
+    return load_yaml("configs/evaluation/lift_friction_refinement.yaml")
 
 
 def test_calibration_grid_is_locked_and_uses_a_fresh_namespace() -> None:
@@ -31,6 +42,27 @@ def test_calibration_grid_is_locked_and_uses_a_fresh_namespace() -> None:
     assert len(manifest) == 480
     assert len({(row["mass"], row["friction"]) for row in manifest}) == 32
     assert {row["reset_index"] for row in manifest} == set(range(90_000, 90_005))
+
+
+def test_refinement_grid_is_locked_and_disjoint_from_coarse_calibration() -> None:
+    masses, frictions, seeds, start, episodes = _resolve_protocol(
+        _refinement_config(), "development"
+    )
+    assert masses == [0.6, 0.9, 1.2, 1.4]
+    assert frictions == [0.29, 0.3, 0.31, 0.32, 0.33, 0.34]
+    assert seeds == [7201, 7202, 7203]
+    assert set(seeds).isdisjoint({7101, 7102, 7103})
+    assert start == 100_000
+    assert episodes == 5
+    manifest = _make_manifest(
+        masses=masses,
+        frictions=frictions,
+        seeds=seeds,
+        index_start=start,
+        episodes=episodes,
+    )
+    assert len(manifest) == 360
+    assert {row["reset_index"] for row in manifest} == set(range(100_000, 100_005))
 
 
 def test_calibration_uses_locked_maximum_grip_profile_below_train_support() -> None:
@@ -108,3 +140,39 @@ def test_frontier_rejects_unpaired_resets() -> None:
     )
     assert not gate["passed"]
     assert gate["recommended_low_friction_support"] == [0.22, 0.24]
+
+
+def test_refinement_requires_the_observed_paired_coarse_boundary(tmp_path) -> None:
+    environment_hash = "environment"
+    config_hash = _json_hash(_config())
+    artifact = {
+        "calibration_version": CALIBRATION_VERSION,
+        "mode": "development",
+        "status": "FAIL",
+        "environment_hash": environment_hash,
+        "config_sha256": config_hash,
+        "failures": [],
+        "gate": {
+            "paired_resets_pass": True,
+            "levels": [
+                {"friction": 0.28, "all_masses_feasible": False},
+                {"friction": 0.30, "all_masses_feasible": True},
+            ],
+        },
+    }
+    source = tmp_path / "coarse.json"
+    source.write_text(json.dumps(artifact), encoding="utf-8")
+    assert _validate_refinement_source(
+        source,
+        environment_hash=environment_hash,
+        calibration_config_hash=config_hash,
+    ) == _json_hash(artifact)
+
+    artifact["gate"]["paired_resets_pass"] = False
+    source.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(ValueError, match="unpaired"):
+        _validate_refinement_source(
+            source,
+            environment_hash=environment_hash,
+            calibration_config_hash=config_hash,
+        )
