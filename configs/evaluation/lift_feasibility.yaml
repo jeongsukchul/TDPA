@@ -1,0 +1,40 @@
+version: tdpa-lift-feasibility-v1
+task: lift
+
+protocol:
+  cells: [ood_mass_high, ood_friction_low]
+  seeds: [6101, 6102, 6103]
+  episodes_per_seed_cell: 20
+  reset_index_start: 70000
+
+# Every profile is applied to every physics/reset row. The feasibility decision
+# may select the best predeclared profile per cell, but never per episode.
+controller_profiles:
+  nominal:
+    velocity_scale: 1.0
+    stiffness: 100.0
+    damping: 15.0
+    grip_force: 18.0
+  high_grip:
+    velocity_scale: 1.0
+    stiffness: 100.0
+    damping: 15.0
+    grip_force: 60.0
+  high_authority:
+    velocity_scale: 1.0
+    stiffness: 220.0
+    damping: 35.0
+    grip_force: 60.0
+  gentle_lift:
+    velocity_scale: 1.0
+    stiffness: 140.0
+    damping: 25.0
+    grip_force: 60.0
+    lift_velocity_scale: 0.50
+    transport_velocity_scale: 0.65
+
+gate:
+  minimum_success_rate: 0.80
+  minimum_success_ci_lower: 0.65
+  maximum_force_violation_rate: 0.10
+  maximum_controller_saturation_rate: 0.0

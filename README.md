@@ -170,6 +170,28 @@ failure cell without excessive action projection, backend saturation, or increas
 violations. It supports moving next to learned SysID / RMA baselines. It does not validate
 deployable adaptation, task-free representations, data efficiency, or physical safety.
 
+### Lift feasibility audit
+
+If the phase/gain oracle still fails extreme Lift cells, do not keep tuning it or weaken the gate.
+Run the no-training privileged-expert feasibility audit on its separate seeds 6101--6103 and reset
+indexes 70000--70019:
+
+```bash
+./scripts/evaluate_lift_feasibility.sh
+```
+
+The audit applies nominal, high-grip, high-authority, and phase-scheduled gentle-lift controller
+profiles to every identical high-mass and low-friction reset. All profiles remain inside the
+deployed Lift action, velocity, stiffness, damping, and gripper-force bounds. The artifact is
+`artifacts/nominal/lift_feasibility_development.json`.
+
+A PASS requires at least one predeclared profile per cell to achieve at least 80% success with a
+bootstrap lower bound of 65%, no controller saturation, and at most 10% simulator force violations.
+It establishes only that the task and controller envelope are feasible for a privileged spatial
+expert. If it passes while the physics-only oracle fails, the nominal/adaptation interface needs
+spatial correction. If it fails, inspect the recorded no-contact, no-grasp, grasp-loss, and
+lift/transport-timeout counts before recalibrating physics or controller bounds.
+
 ## Scientific boundaries
 
 - Deployment models receive only RGB-D, proprioception, and action history.
