@@ -174,6 +174,27 @@ failure cell without excessive action projection, backend saturation, or increas
 violations. It supports moving next to learned SysID / RMA baselines. It does not validate
 deployable adaptation, task-free representations, data efficiency, or physical safety.
 
+### Lift privileged spatial-residual upper bound
+
+If calibrated Oracle v2 revision 3 passes Lift low-friction and composition recovery but fails
+high-mass recovery, run the bounded spatial-residual development gate next. It reuses the exact
+revision-3 B0 rows and reset manifest, then executes only the new spatial-oracle arm. The oracle
+retains the same mass/friction controller schedule, adds privileged object pose, target pose, and
+grasp state, clips each Cartesian residual component to the deployed adapter's `0.12` bound, and
+never replaces the learned nominal policy's gripper command.
+
+```bash
+conda activate TDPA
+export MUJOCO_GL=egl
+./scripts/evaluate_lift_spatial_residual_oracle.sh
+```
+
+This is a development-only diagnosis; there is intentionally no final-mode command. A PASS means
+the current action/controller interface can support recovery when supplied ideal spatial context,
+which justifies implementing a learned causal spatial residual. It is not a deployable adaptation
+result and does not justify representation-learning claims. A FAIL means the nominal policy or
+adapter action envelope needs revision before learned adaptation work.
+
 ### Lift feasibility audit
 
 If the phase/gain oracle still fails extreme Lift cells, do not keep tuning it or weaken the gate.

@@ -1,0 +1,31 @@
+version: tdpa-robosuite-spatial-residual-v1
+revision: 1
+task: lift
+derived_from:
+  oracle_gate_version: tdpa-robosuite-oracle-gate-v2
+  oracle_revision: 3
+  source_mode: development
+  required_source_status: FAIL
+  required_failed_cell: ood_mass_high
+
+# The source development manifest is reused exactly. No final seed is spent.
+protocol:
+  seeds: [4101, 4102, 4103]
+  reset_index_start: 40000
+  episodes_per_seed_cell: 20
+  cells: [ood_mass_high, ood_friction_low, ood_composition]
+
+correction:
+  residual_max: 0.12
+  residual_near_bound_fraction: 0.95
+  preserve_nominal_gripper: true
+  reuse_physics_oracle_controller_schedule: true
+
+gate:
+  minimum_oracle_success_rate: 0.80
+  minimum_absolute_success_recovery: 0.20
+  minimum_success_recovery_ci_lower: 0.05
+  minimum_gap_closed: 0.50
+  maximum_cartesian_residual_abs: 0.12
+  maximum_saturation_rate: 0.10
+  maximum_force_violation_increase: 0.10
